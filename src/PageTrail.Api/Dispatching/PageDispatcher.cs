@@ -37,9 +37,9 @@ public sealed class PageDispatcher(
         }
     }
 
+    // WHY: EF Core wraps transient SQL Server errors such as a refused login in InvalidOperationException
     private static bool IsOutage(Exception ex) =>
         ex is RabbitMQClientException or IOException or DbException or DbUpdateException
-        // WHY: EF Core wraps transient SQL Server errors such as a refused login in InvalidOperationException
         || ex is InvalidOperationException { InnerException: DbException };
 
     private async Task PublishBatchAsync(CancellationToken cancellationToken)
