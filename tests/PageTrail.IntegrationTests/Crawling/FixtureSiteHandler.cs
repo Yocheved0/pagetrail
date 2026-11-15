@@ -12,22 +12,29 @@ public sealed class FixtureSiteHandler : HttpMessageHandler
 
     private readonly ConcurrentDictionary<string, int> _requests = new();
 
+    public Func<Uri, Task>? BeforeRespond { get; set; }
+
     public int RequestsFor(string url) => _requests.GetValueOrDefault(url);
 
-    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
         _requests.AddOrUpdate(request.RequestUri!.AbsoluteUri, 1, (_, count) => count + 1);
+        if (BeforeRespond is { } hook)
+        {
+            await hook(request.RequestUri);
+        }
+
         var path = request.RequestUri.AbsolutePath.Trim('/');
         var file = FindFile(path);
         if (file is null)
         {
-            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound) { RequestMessage = request });
+            return new HttpResponseMessage(HttpStatusCode.NotFound) { RequestMessage = request };
         }
 
-        var content = new ByteArrayContent(File.ReadAllBytes(file));
+        var content = new ByteArrayContent(await File.ReadAllBytesAsync(file, cancellationToken));
         content.Headers.ContentType = new MediaTypeHeaderValue(file.EndsWith(".html", StringComparison.Ordinal) ? "text/html" : "image/png");
         var finalRequest = path == LeavesDomainPath ? new HttpRequestMessage(HttpMethod.Get, OffSiteLanding) : request;
-        return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = content, RequestMessage = finalRequest });
+        return new HttpResponseMessage(HttpStatusCode.OK) { Content = content, RequestMessage = finalRequest };
     }
 
     private static string? FindFile(string path)

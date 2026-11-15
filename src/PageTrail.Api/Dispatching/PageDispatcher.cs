@@ -4,6 +4,7 @@ using Microsoft.Extensions.Options;
 using PageTrail.Infrastructure.Messaging;
 using PageTrail.Infrastructure.Persistence;
 using RabbitMQ.Client;
+using RabbitMQ.Client.Exceptions;
 
 namespace PageTrail.Api.Dispatching;
 
@@ -15,18 +16,61 @@ public sealed class PageDispatcher(
     private const int BatchSize = 100;
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(1);
 
+    private IConnection? _connection;
+    private IChannel? _channel;
+
+    public override async Task StopAsync(CancellationToken cancellationToken)
+    {
+        await base.StopAsync(cancellationToken);
+        await CloseAsync();
+    }
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        await using var connection = await rabbitMq.Value.CreateConnectionFactory().CreateConnectionAsync(stoppingToken);
-        await using var channel = await connection.CreateChannelAsync(
-            new CreateChannelOptions(publisherConfirmationsEnabled: true, publisherConfirmationTrackingEnabled: true),
-            stoppingToken);
-        await CrawlQueues.DeclareAsync(channel, stoppingToken);
-
         using var timer = new PeriodicTimer(PollInterval);
         while (await timer.WaitForNextTickAsync(stoppingToken))
         {
-            await PublishBatchAsync(channel, stoppingToken);
+            try
+            {
+                await PublishBatchAsync(await OpenChannelAsync(stoppingToken), stoppingToken);
+            }
+            catch (Exception ex) when (ex is RabbitMQClientException or IOException)
+            {
+                logger.LogWarning(ex, "Page dispatch failed; retrying on the next tick");
+                await CloseAsync();
+            }
+        }
+    }
+
+    private async Task<IChannel> OpenChannelAsync(CancellationToken cancellationToken)
+    {
+        if (_channel is { IsOpen: true })
+        {
+            return _channel;
+        }
+
+        await CloseAsync();
+        _connection = await rabbitMq.Value.CreateConnectionFactory().CreateConnectionAsync(cancellationToken);
+        _channel = await _connection.CreateChannelAsync(
+            new CreateChannelOptions(publisherConfirmationsEnabled: true, publisherConfirmationTrackingEnabled: true),
+            cancellationToken);
+        await CrawlQueues.DeclareAsync(_channel, cancellationToken);
+        logger.LogInformation("Page dispatcher connected to RabbitMQ");
+        return _channel;
+    }
+
+    private async Task CloseAsync()
+    {
+        if (_channel is not null)
+        {
+            await _channel.DisposeAsync();
+            _channel = null;
+        }
+
+        if (_connection is not null)
+        {
+            await _connection.DisposeAsync();
+            _connection = null;
         }
     }
 

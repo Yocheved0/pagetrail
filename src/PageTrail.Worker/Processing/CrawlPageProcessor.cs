@@ -14,56 +14,111 @@ public sealed class CrawlPageProcessor(
     TimeProvider time,
     ILogger<CrawlPageProcessor> logger)
 {
-    public async Task ProcessAsync(CrawlPageMessage message, CancellationToken cancellationToken)
+    public async Task<ProcessingResult> ProcessAsync(CrawlPageMessage message, CancellationToken cancellationToken)
     {
-        var page = await db.Pages.SingleOrDefaultAsync(p => p.Id == message.PageId && p.JobId == message.JobId, cancellationToken);
-        var job = await db.Jobs.SingleOrDefaultAsync(j => j.Id == message.JobId, cancellationToken);
-        if (page is null || job is null || page.Status != CrawlPageStatus.Queued || job.IsFinished)
+        var page = await FindPageAsync(message, cancellationToken);
+        var job = await db.Jobs.AsNoTracking().SingleOrDefaultAsync(j => j.Id == message.JobId, cancellationToken);
+        if (page is null || job is null)
         {
-            logger.LogInformation("Page {PageId} skipped: already processed or job finished", message.PageId);
+            return ProcessingResult.UnknownPage;
+        }
+
+        if (page.Status != CrawlPageStatus.Queued || job.IsFinished)
+        {
+            logger.LogInformation("Page {PageId} skipped: already processed or job finished", page.Id);
+            return ProcessingResult.AlreadyProcessed;
+        }
+
+        var fetched = await fetcher.FetchAsync(new Uri(page.Url), cancellationToken);
+        var outcome = ApplyFetchResult(new StartingDomain(new Uri(job.Url)), page, fetched);
+        if (!await CommitAsync(page, outcome, cancellationToken))
+        {
+            logger.LogInformation("Page {PageId} discarded: already claimed by another delivery", page.Id);
+            return ProcessingResult.AlreadyProcessed;
+        }
+
+        logger.LogInformation("Page {PageId} processed with outcome {Outcome}", page.Id, fetched.Outcome);
+        return ProcessingResult.Committed;
+    }
+
+    public async Task MarkFailedAsync(CrawlPageMessage message, string reason, CancellationToken cancellationToken)
+    {
+        // WHY: a failed attempt can leave its unsaved links and child pages tracked on this context
+        db.ChangeTracker.Clear();
+        var page = await FindPageAsync(message, cancellationToken);
+        if (page is null)
+        {
             return;
         }
 
-        job.Start(time.GetUtcNow());
-        var fetched = await fetcher.FetchAsync(new Uri(page.Url), cancellationToken);
-        await ApplyFetchResultAsync(job, page, fetched, cancellationToken);
-        await db.SaveChangesAsync(cancellationToken);
-
-        await CompleteJobWhenNothingQueuedAsync(job, cancellationToken);
-        logger.LogInformation("Page {PageId} processed with outcome {Outcome}", page.Id, fetched.Outcome);
+        page.Fail();
+        if (await CommitAsync(page, PageOutcome.WithoutLinks(reason), cancellationToken))
+        {
+            logger.LogWarning("Page {PageId} marked failed after its final attempt", page.Id);
+        }
     }
 
-    private async Task ApplyFetchResultAsync(CrawlJob job, CrawlPage page, FetchResult fetched, CancellationToken cancellationToken)
+    private Task<CrawlPage?> FindPageAsync(CrawlPageMessage message, CancellationToken cancellationToken) =>
+        db.Pages.AsNoTracking().SingleOrDefaultAsync(p => p.Id == message.PageId && p.JobId == message.JobId, cancellationToken);
+
+    private static PageOutcome ApplyFetchResult(StartingDomain domain, CrawlPage page, FetchResult fetched)
     {
-        var domain = new StartingDomain(new Uri(job.Url));
         if (fetched.Outcome == FetchOutcome.Failed)
         {
-            FailPage(job, page, fetched.FailureReason);
+            page.Fail();
+            return PageOutcome.WithoutLinks($"Root page could not be fetched: {fetched.FailureReason}");
         }
-        else if (fetched.Outcome == FetchOutcome.NotHtml || !domain.Contains(fetched.FinalUrl))
+
+        if (fetched.Outcome == FetchOutcome.NotHtml || !domain.Contains(fetched.FinalUrl))
         {
             page.Skip();
+            return PageOutcome.WithoutLinks();
         }
-        else
-        {
-            var links = PageLinks.From(fetched.FinalUrl, LinkExtractor.ExtractHrefs(fetched.Html!), domain);
-            db.Links.AddRange(page.Complete(links));
-            await QueueChildrenAsync(job, page, links.Outgoing.Where(domain.Contains), cancellationToken);
-        }
+
+        var links = PageLinks.From(fetched.FinalUrl, LinkExtractor.ExtractHrefs(fetched.Html!), domain);
+        return new PageOutcome(page.Complete(links), links.Outgoing.Where(domain.Contains).ToList(), null);
     }
 
-    private void FailPage(CrawlJob job, CrawlPage page, string? reason)
+    private async Task<bool> CommitAsync(CrawlPage page, PageOutcome outcome, CancellationToken cancellationToken)
     {
-        page.Fail();
-        if (page.IsRoot)
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        var job = await LockJobAsync(page.JobId, cancellationToken);
+        if (job.IsFinished || !await ClaimAsync(page, cancellationToken))
         {
-            job.Fail($"Root page could not be fetched: {reason}", time.GetUtcNow());
+            await transaction.RollbackAsync(cancellationToken);
+            return false;
         }
+
+        job.Start(time.GetUtcNow());
+        db.Links.AddRange(outcome.Links);
+        await QueueChildrenAsync(job, page, outcome.ChildCandidates, cancellationToken);
+        if (page.Status == CrawlPageStatus.Failed && page.IsRoot)
+        {
+            job.Fail(outcome.FailureReason ?? "Root page failed", time.GetUtcNow());
+        }
+
+        await db.SaveChangesAsync(cancellationToken);
+        await CompleteJobWhenNothingQueuedAsync(job, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return true;
     }
 
-    private async Task QueueChildrenAsync(CrawlJob job, CrawlPage page, IEnumerable<Uri> sameDomainLinks, CancellationToken cancellationToken)
+    private Task<CrawlJob> LockJobAsync(Guid jobId, CancellationToken cancellationToken) =>
+        db.Jobs.FromSql($"SELECT * FROM Jobs WITH (UPDLOCK, ROWLOCK) WHERE Id = {jobId}").SingleAsync(cancellationToken);
+
+    private async Task<bool> ClaimAsync(CrawlPage page, CancellationToken cancellationToken)
     {
-        if (page.Depth >= job.MaxDepth)
+        var claimed = await db.Pages
+            .Where(p => p.Id == page.Id && p.Status == CrawlPageStatus.Queued)
+            .ExecuteUpdateAsync(
+                set => set.SetProperty(p => p.Status, page.Status).SetProperty(p => p.DomainLinkRatio, page.DomainLinkRatio),
+                cancellationToken);
+        return claimed == 1;
+    }
+
+    private async Task QueueChildrenAsync(CrawlJob job, CrawlPage page, IReadOnlyList<Uri> sameDomainLinks, CancellationToken cancellationToken)
+    {
+        if (sameDomainLinks.Count == 0 || page.Depth >= job.MaxDepth)
         {
             return;
         }

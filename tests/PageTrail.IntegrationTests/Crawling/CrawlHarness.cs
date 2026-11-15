@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -13,6 +14,8 @@ namespace PageTrail.IntegrationTests.Crawling;
 public sealed class CrawlHarness(PageTrailApiFactory factory)
 {
     public FixtureSiteHandler Site { get; } = new();
+
+    public static byte[] BodyOf(Guid jobId, long pageId) => JsonSerializer.SerializeToUtf8Bytes(new CrawlPageMessage(jobId, pageId));
 
     public PageTrailDbContext CreateDb() =>
         factory.Services.CreateScope().ServiceProvider.GetRequiredService<PageTrailDbContext>();
@@ -32,9 +35,17 @@ public sealed class CrawlHarness(PageTrailApiFactory factory)
     {
         await using var db = CreateDb();
         using var http = new HttpClient(Site, disposeHandler: false);
-        var processor = new CrawlPageProcessor(db, new HtmlPageFetcher(http), TimeProvider.System, NullLogger<CrawlPageProcessor>.Instance);
 
-        await processor.ProcessAsync(new CrawlPageMessage(jobId, pageId), CancellationToken.None);
+        await CreateProcessor(db, http).ProcessAsync(new CrawlPageMessage(jobId, pageId), CancellationToken.None);
+    }
+
+    public async Task<DeliveryDecision> HandleAsync(byte[] body, int attempt)
+    {
+        await using var db = CreateDb();
+        using var http = new HttpClient(Site, disposeHandler: false);
+        var handler = new CrawlDeliveryHandler(CreateProcessor(db, http), NullLogger<CrawlDeliveryHandler>.Instance);
+
+        return await handler.HandleAsync(body, attempt, CancellationToken.None);
     }
 
     public async Task CrawlUntilDoneAsync(Guid jobId)
@@ -44,6 +55,9 @@ public sealed class CrawlHarness(PageTrailApiFactory factory)
             await ProcessAsync(jobId, pageId);
         }
     }
+
+    private static CrawlPageProcessor CreateProcessor(PageTrailDbContext db, HttpClient http) =>
+        new(db, new HtmlPageFetcher(http), TimeProvider.System, NullLogger<CrawlPageProcessor>.Instance);
 
     private async Task<long?> NextQueuedPageAsync(Guid jobId)
     {
