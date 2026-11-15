@@ -1,10 +1,8 @@
 name: ci
 
 on:
-  push:
-    branches: [main]
   pull_request:
-  workflow_dispatch:
+    branches: [main]
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -63,15 +61,11 @@ jobs:
         run: node tools/check-comments.mjs
       - name: No secrets or PHI patterns
         run: node tools/check-secrets.mjs
-      - name: Commit messages (pull request)
-        if: github.event_name == 'pull_request'
+      - name: Commit messages
         env:
           PR_TITLE: ${{ github.event.pull_request.title }}
           PR_BODY: ${{ github.event.pull_request.body }}
         run: node tools/commit-policy.mjs range "${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}"
-      - name: Commit messages (push)
-        if: github.event_name == 'push' && github.event.before != '0000000000000000000000000000000000000000'
-        run: node tools/commit-policy.mjs range "${{ github.event.before }}..${{ github.sha }}"
       - name: Gitleaks
         uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2.3.9
         env:
