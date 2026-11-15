@@ -2,7 +2,8 @@ using System.Net;
 
 namespace PageTrail.IntegrationTests;
 
-public sealed class HealthTests(PageTrailApiFactory factory) : IClassFixture<PageTrailApiFactory>
+[Collection(ApiCollection.Name)]
+public sealed class HealthTests(PageTrailApiFactory factory)
 {
     [Fact]
     public async Task HealthReturnsOkWhenDatabaseIsReachable()

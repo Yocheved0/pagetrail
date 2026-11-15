@@ -23,6 +23,11 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\PageTrail.Api\PageTrail.Api.csproj" />
+    <ProjectReference Include="..\..\src\PageTrail.Worker\PageTrail.Worker.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="Fixtures/**/*" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

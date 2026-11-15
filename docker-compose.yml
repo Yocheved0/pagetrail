@@ -32,6 +32,9 @@ services:
       dockerfile: src/PageTrail.Api/Dockerfile
     environment:
       ConnectionStrings__Default: Server=db;Database=PageTrail;User Id=sa;Password=${SA_PASSWORD};TrustServerCertificate=True
+      RabbitMq__HostName: rabbitmq
+      RabbitMq__UserName: ${RABBITMQ_USER}
+      RabbitMq__Password: ${RABBITMQ_PASSWORD}
     ports:
       - "8080:8080"
     depends_on:
@@ -46,6 +49,9 @@ services:
       dockerfile: src/PageTrail.Worker/Dockerfile
     environment:
       ConnectionStrings__Default: Server=db;Database=PageTrail;User Id=sa;Password=${SA_PASSWORD};TrustServerCertificate=True
+      RabbitMq__HostName: rabbitmq
+      RabbitMq__UserName: ${RABBITMQ_USER}
+      RabbitMq__Password: ${RABBITMQ_PASSWORD}
     ports:
       - "8081:8080"
     depends_on:
