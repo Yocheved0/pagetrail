@@ -9,10 +9,12 @@ namespace PageTrail.Worker.Processing;
 public sealed class CrawlPageConsumer(
     IServiceScopeFactory scopes,
     IOptions<RabbitMqOptions> rabbitMq,
-    BrokerConnectionState connectionState) : BackgroundService
+    BrokerConnectionState connectionState,
+    ILogger<CrawlPageConsumer> logger) : BackgroundService
 {
     private const ushort Prefetch = 10;
     private const int FirstAttempt = 1;
+    private static readonly TimeSpan RequeueDelay = TimeSpan.FromSeconds(5);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -61,7 +63,15 @@ public sealed class CrawlPageConsumer(
         await channel.BasicPublishAsync(exchange: "", routingKey: queue, mandatory: true, properties, body, cancellationToken);
     }
 
-    private async Task HandleAsync(IChannel channel, BasicDeliverEventArgs delivery, CancellationToken cancellationToken)
+    private Task HandleAsync(IChannel channel, BasicDeliverEventArgs delivery, CancellationToken cancellationToken) =>
+        DeliverySafetyNet.RunAsync(
+            () => DeliverAsync(channel, delivery, cancellationToken),
+            () => channel.BasicNackAsync(delivery.DeliveryTag, multiple: false, requeue: true, cancellationToken).AsTask(),
+            RequeueDelay,
+            logger,
+            cancellationToken);
+
+    private async Task DeliverAsync(IChannel channel, BasicDeliverEventArgs delivery, CancellationToken cancellationToken)
     {
         await using var scope = scopes.CreateAsyncScope();
         var handler = scope.ServiceProvider.GetRequiredService<CrawlDeliveryHandler>();
