@@ -18,3 +18,13 @@ public sealed record JobResponse(
     DateTimeOffset? CompletedAt,
     string? FailureReason,
     JobProgress Progress);
+
+public sealed record JobSummary(
+    Guid Id,
+    string Url,
+    CrawlJobStatus Status,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset? StartedAt,
+    DateTimeOffset? CompletedAt);
+
+public sealed record JobHistoryResponse(IReadOnlyList<JobSummary> Items, int Page, int PageSize, int TotalCount);

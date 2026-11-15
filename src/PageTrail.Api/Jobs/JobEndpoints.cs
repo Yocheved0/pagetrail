@@ -13,9 +13,34 @@ public static class JobEndpoints
     {
         var jobs = app.MapGroup("/api/jobs");
         jobs.MapPost("/", CreateJobAsync);
+        jobs.MapGet("/", ListJobsAsync);
         jobs.MapGet("/{jobId:guid}", GetJobAsync);
         jobs.MapGet("/{jobId:guid}/tree", GetTreeAsync);
         return app;
+    }
+
+    private static async Task<Results<Ok<JobHistoryResponse>, ValidationProblem>> ListJobsAsync(
+        PageTrailDbContext db,
+        CancellationToken cancellationToken,
+        int page = HistoryPaging.DefaultPage,
+        int pageSize = HistoryPaging.DefaultPageSize)
+    {
+        var errors = HistoryPaging.Validate(page, pageSize);
+        if (errors.Count > 0)
+        {
+            return TypedResults.ValidationProblem(errors);
+        }
+
+        var totalCount = await db.Jobs.CountAsync(cancellationToken);
+        var items = await db.Jobs.AsNoTracking()
+            .OrderByDescending(j => j.CreatedAt)
+            .ThenBy(j => j.Id)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(j => new JobSummary(j.Id, j.Url, j.Status, j.CreatedAt, j.StartedAt, j.CompletedAt))
+            .ToListAsync(cancellationToken);
+
+        return TypedResults.Ok(new JobHistoryResponse(items, page, pageSize, totalCount));
     }
 
     private static async Task<Results<Ok<PageNode>, NotFound>> GetTreeAsync(

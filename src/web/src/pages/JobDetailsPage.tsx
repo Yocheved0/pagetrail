@@ -2,12 +2,9 @@ import { useQuery } from "@tanstack/react-query";
 import { useParams } from "react-router";
 import { finishedStatuses, getJob, getTree, type Job } from "../api";
 import PageTree from "../components/PageTree";
+import { formatTime } from "../format";
 
 const pollIntervalMs = 1500;
-
-function formatTime(value: string | null) {
-  return value ? new Date(value).toLocaleString() : "—";
-}
 
 function Progress({ job }: { job: Job }) {
   const { queued, done, skipped, failed } = job.progress;

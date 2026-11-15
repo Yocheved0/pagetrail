@@ -82,3 +82,19 @@ export interface PageNode {
 export function getTree(jobId: string) {
   return request<PageNode>(`/api/jobs/${encodeURIComponent(jobId)}/tree`);
 }
+
+export type JobSummary = Pick<
+  Job,
+  "id" | "url" | "status" | "createdAt" | "startedAt" | "completedAt"
+>;
+
+export interface JobHistory {
+  items: JobSummary[];
+  page: number;
+  pageSize: number;
+  totalCount: number;
+}
+
+export function listJobs(page: number, pageSize: number) {
+  return request<JobHistory>(`/api/jobs?page=${page}&pageSize=${pageSize}`);
+}
