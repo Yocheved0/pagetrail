@@ -98,3 +98,9 @@ export interface JobHistory {
 export function listJobs(page: number, pageSize: number) {
   return request<JobHistory>(`/api/jobs?page=${page}&pageSize=${pageSize}`);
 }
+
+export function cancelJob(jobId: string) {
+  return request<Job>(`/api/jobs/${encodeURIComponent(jobId)}/cancel`, {
+    method: "POST",
+  });
+}

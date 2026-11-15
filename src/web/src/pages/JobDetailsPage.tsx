@@ -1,6 +1,6 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "react-router";
-import { finishedStatuses, getJob, getTree, type Job } from "../api";
+import { cancelJob, finishedStatuses, getJob, getTree, type Job } from "../api";
 import PageTree from "../components/PageTree";
 import { formatTime } from "../format";
 
@@ -33,6 +33,28 @@ function CompletedTree({ jobId }: { jobId: string }) {
     return <p role="alert">Could not load pages: {tree.error.message}</p>;
   }
   return <PageTree root={tree.data} />;
+}
+
+function CancelButton({ jobId }: { jobId: string }) {
+  const queryClient = useQueryClient();
+  const cancel = useMutation({
+    mutationFn: () => cancelJob(jobId),
+    onSuccess: (job) => queryClient.setQueryData(["job", jobId], job),
+  });
+  return (
+    <div>
+      <button
+        type="button"
+        disabled={cancel.isPending}
+        onClick={() => cancel.mutate()}
+      >
+        {cancel.isPending ? "Canceling…" : "Cancel crawl"}
+      </button>
+      {cancel.isError && (
+        <p role="alert">Could not cancel: {cancel.error.message}</p>
+      )}
+    </div>
+  );
 }
 
 export default function JobDetailsPage() {
@@ -78,6 +100,9 @@ export default function JobDetailsPage() {
         )}
       </dl>
       <Progress job={data} />
+      {!finishedStatuses.includes(data.status) && (
+        <CancelButton jobId={data.id} />
+      )}
       {data.status === "Completed" && <CompletedTree jobId={data.id} />}
     </section>
   );

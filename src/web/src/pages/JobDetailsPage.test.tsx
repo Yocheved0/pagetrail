@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { afterEach, expect, test, vi } from "vitest";
 import JobDetailsPage from "./JobDetailsPage";
@@ -82,4 +83,46 @@ test("a completed job shows its page tree with each page's Domain Link Ratio", a
       .getByRole("link", { name: "https://example.com/logo.png" })
       .closest("li"),
   ).toHaveTextContent("Skipped");
+});
+
+test("an active job can be canceled", async () => {
+  const runningJob = {
+    ...completedJob,
+    status: "Running",
+    completedAt: null,
+    progress: { queued: 3, done: 1, skipped: 0, failed: 0 },
+  };
+  const canceledJob = {
+    ...runningJob,
+    status: "Canceled",
+    completedAt: "2026-11-15T10:00:06Z",
+  };
+  const fetchMock = vi.fn((_url: string, init?: RequestInit) =>
+    Promise.resolve(
+      Response.json(init?.method === "POST" ? canceledJob : runningJob),
+    ),
+  );
+  vi.stubGlobal("fetch", fetchMock);
+
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <MemoryRouter initialEntries={["/jobs/job-1"]}>
+        <Routes>
+          <Route path="/jobs/:jobId" element={<JobDetailsPage />} />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+
+  await userEvent.click(
+    await screen.findByRole("button", { name: "Cancel crawl" }),
+  );
+
+  expect(await screen.findByText("Canceled")).toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: "Cancel crawl" }),
+  ).not.toBeInTheDocument();
+  expect(fetchMock).toHaveBeenCalledWith("/api/jobs/job-1/cancel", {
+    method: "POST",
+  });
 });

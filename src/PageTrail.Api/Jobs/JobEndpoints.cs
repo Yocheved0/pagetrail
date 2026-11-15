@@ -16,6 +16,7 @@ public static class JobEndpoints
         jobs.MapGet("/", ListJobsAsync);
         jobs.MapGet("/{jobId:guid}", GetJobAsync);
         jobs.MapGet("/{jobId:guid}/tree", GetTreeAsync);
+        jobs.MapPost("/{jobId:guid}/cancel", CancelJobAsync);
         return app;
     }
 
@@ -80,15 +81,47 @@ public static class JobEndpoints
         PageTrailDbContext db,
         CancellationToken cancellationToken)
     {
-        var job = await db.Jobs.AsNoTracking().SingleOrDefaultAsync(j => j.Id == jobId, cancellationToken);
+        var job = await LoadJobAsync(db, jobId, cancellationToken);
+        return job is null ? TypedResults.NotFound() : TypedResults.Ok(job);
+    }
+
+    private static async Task<Results<Ok<JobResponse>, NotFound, ProblemHttpResult>> CancelJobAsync(
+        Guid jobId,
+        PageTrailDbContext db,
+        TimeProvider time,
+        ILogger<CrawlJob> logger,
+        CancellationToken cancellationToken)
+    {
+        var now = time.GetUtcNow();
+        var canceled = await db.Jobs
+            .Where(j => j.Id == jobId && (j.Status == CrawlJobStatus.Pending || j.Status == CrawlJobStatus.Running))
+            .ExecuteUpdateAsync(set => set.SetProperty(j => j.Status, CrawlJobStatus.Canceled).SetProperty(j => j.CompletedAt, now), cancellationToken);
+        var job = await LoadJobAsync(db, jobId, cancellationToken);
         if (job is null)
         {
             return TypedResults.NotFound();
         }
 
+        if (canceled == 0)
+        {
+            return TypedResults.Problem($"Job is already {job.Status} and cannot be canceled.", statusCode: StatusCodes.Status409Conflict);
+        }
+
+        logger.LogInformation("Crawl job {JobId} canceled", jobId);
+        return TypedResults.Ok(job);
+    }
+
+    private static async Task<JobResponse?> LoadJobAsync(PageTrailDbContext db, Guid jobId, CancellationToken cancellationToken)
+    {
+        var job = await db.Jobs.AsNoTracking().SingleOrDefaultAsync(j => j.Id == jobId, cancellationToken);
+        if (job is null)
+        {
+            return null;
+        }
+
         var progress = await ProgressOfAsync(db, jobId, cancellationToken);
-        return TypedResults.Ok(new JobResponse(
-            job.Id, job.Url, job.MaxDepth, job.Status, job.CreatedAt, job.StartedAt, job.CompletedAt, job.FailureReason, progress));
+        return new JobResponse(
+            job.Id, job.Url, job.MaxDepth, job.Status, job.CreatedAt, job.StartedAt, job.CompletedAt, job.FailureReason, progress);
     }
 
     private static async Task<JobProgress> ProgressOfAsync(PageTrailDbContext db, Guid jobId, CancellationToken cancellationToken)
