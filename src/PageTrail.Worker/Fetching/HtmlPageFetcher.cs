@@ -22,6 +22,10 @@ public sealed class HtmlPageFetcher(HttpClient http)
 
             return new FetchResult(FetchOutcome.Html, finalUrl, await response.Content.ReadAsStringAsync(cancellationToken));
         }
+        catch (HttpRequestException ex) when (ex.InnerException is BlockedAddressException)
+        {
+            return new FetchResult(FetchOutcome.Failed, url, FailureReason: PrivateAddressGuard.BlockedReason);
+        }
         catch (HttpRequestException ex)
         {
             return new FetchResult(FetchOutcome.Failed, url, FailureReason: ex.HttpRequestError.ToString());

@@ -11,7 +11,9 @@ builder.Services.AddPersistence(builder.Configuration);
 builder.Services.AddRabbitMq(builder.Configuration);
 builder.Services.AddSingleton<BrokerConnectionState>();
 builder.Services.AddHealthChecks().AddCheck<BrokerConnectionHealthCheck>("rabbitmq");
-builder.Services.AddHttpClient<HtmlPageFetcher>().AddStandardResilienceHandler();
+builder.Services.AddHttpClient<HtmlPageFetcher>()
+    .ConfigurePrimaryHttpMessageHandler(PrivateAddressGuard.CreateHandler)
+    .AddStandardResilienceHandler();
 builder.Services.AddScoped<CrawlPageProcessor>();
 builder.Services.AddScoped<CrawlDeliveryHandler>();
 builder.Services.AddHostedService<CrawlPageConsumer>();
