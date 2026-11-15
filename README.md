@@ -43,13 +43,13 @@ UI ──▶ API ──▶ SQL Server ◀── Worker
 
 ## Messaging
 
-**Message:** `{ "JobId": "…", "PageId": 42 }`. Everything else is read from the database.
+Each page waiting to be crawled is one message on a RabbitMQ queue. The message only says which job and which page it is about, for example `{ "JobId": "…", "PageId": 42 }`; the worker looks up everything else in the database.
 
-**Idempotency.** A message can arrive twice. The worker marks a page done only `WHERE Status = 'Queued'`; if that changes nothing, the page was already processed and nothing is written. Unique indexes make duplicate pages or links impossible.
+**The same message can arrive twice, and that's safe.** RabbitMQ sometimes delivers a message more than once. Before saving anything, the worker checks that the page is still waiting to be crawled. If an earlier delivery already handled it, the worker saves nothing. The database also refuses to store the same page or link twice.
 
-**Retries.** The HTTP client retries network errors, timeouts and 5xx/408/429 responses. Any other failure while handling a message is tried up to 3 times, 5 seconds apart.
+**Failures are retried.** If fetching a page fails because of a network problem, a timeout or a server error, the worker tries the request again a few times. If handling the message fails for another reason, for example the database is briefly unavailable, the message is tried again 5 seconds later, up to 3 times in total.
 
-**Dead-letter queue** (`crawl.pages.dlq`) gets messages that can't be read, point at a missing page, or still fail after 3 attempts.
+**Messages that keep failing are set aside.** A message that can't be read, points to a page that doesn't exist, or fails all 3 tries is moved to a separate queue, `crawl.pages.dlq` (a "dead-letter" queue), where it stops being retried and can be inspected. Its page is marked as failed so the rest of the job can still finish.
 
 ## Assumptions
 
@@ -57,15 +57,16 @@ UI ──▶ API ──▶ SQL Server ◀── Worker
 - Only same-site links are crawled; external links are counted but not fetched.
 - Defaults: depth 2 (max 5), 200 pages per job.
 
-## First, cut, next
+## What I built first, what I cut, and what I'd do next
 
-**First:** the URL and ratio rules with tests, because everything depends on them; then one thin path from the UI through the queue to the worker, because messaging was the riskiest part.
+I started with the rules for cleaning up URLs and calculating the Domain Link Ratio, with tests, because every other part of the app depends on them being right. Then I built one simple path all the way through, from clicking Start Crawl to the API, the queue, the worker and back to the screen, because the messaging was the part most likely to go wrong.
 
-**Cut:** live updates (polling is enough here) and a test through a real RabbitMQ (retries and dead-lettering are tested against the database).
+I cut live updates: the job page asks the API for progress every 1.5 seconds instead, which is simpler and fast enough here. I also didn't write a test that runs against a real RabbitMQ server; the retry and dead-letter behaviour is tested against the database instead.
 
-**Next:** live updates, a check that re-sends pages stuck in `Queued`, and a test through a real broker.
+With more time, I would add live updates, a background check that re-sends any page whose message was lost, and a test that runs against a real RabbitMQ server.
 
 ## Known limitations
 
-- The worker exits if RabbitMQ isn't up when it starts; Compose starts it after RabbitMQ.
-- No authentication.
+- **The worker needs RabbitMQ running before it starts.** If RabbitMQ isn't reachable at startup, the worker stops instead of waiting. Docker Compose avoids this by starting the worker only once RabbitMQ is ready, but if you run the worker by hand, start RabbitMQ first.
+- **A lost message leaves its job unfinished.** If a message disappears without any error, its page stays "waiting" forever, so the job never reaches Completed. The background check under "what I'd do next" would fix this.
+- **There is no login.** Anyone who can reach the app can start crawls and see every job. That's fine on your own machine, but it would need authentication before running on a shared server.
