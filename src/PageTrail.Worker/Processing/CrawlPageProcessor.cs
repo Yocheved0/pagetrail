@@ -5,12 +5,14 @@ using PageTrail.Domain.Pages;
 using PageTrail.Infrastructure.Messaging;
 using PageTrail.Infrastructure.Persistence;
 using PageTrail.Worker.Fetching;
+using PageTrail.Worker.Robots;
 
 namespace PageTrail.Worker.Processing;
 
 public sealed class CrawlPageProcessor(
     PageTrailDbContext db,
     HtmlPageFetcher fetcher,
+    RobotsPolicy robots,
     TimeProvider time,
     ILogger<CrawlPageProcessor> logger)
 {
@@ -29,7 +31,7 @@ public sealed class CrawlPageProcessor(
             return ProcessingResult.AlreadyProcessed;
         }
 
-        var fetched = await fetcher.FetchAsync(new Uri(page.Url), cancellationToken);
+        var fetched = await FetchAllowedAsync(page, cancellationToken);
         var outcome = ApplyFetchResult(new StartingDomain(new Uri(job.Url)), page, fetched);
         if (!await CommitAsync(page, outcome, cancellationToken))
         {
@@ -61,6 +63,14 @@ public sealed class CrawlPageProcessor(
     private Task<CrawlPage?> FindPageAsync(CrawlPageMessage message, CancellationToken cancellationToken) =>
         db.Pages.AsNoTracking().SingleOrDefaultAsync(p => p.Id == message.PageId && p.JobId == message.JobId, cancellationToken);
 
+    private async Task<FetchResult> FetchAllowedAsync(CrawlPage page, CancellationToken cancellationToken)
+    {
+        var url = new Uri(page.Url);
+        return await robots.AllowsAsync(page.JobId, url, cancellationToken)
+            ? await fetcher.FetchAsync(url, cancellationToken)
+            : new FetchResult(FetchOutcome.Disallowed, url);
+    }
+
     private static PageOutcome ApplyFetchResult(StartingDomain domain, CrawlPage page, FetchResult fetched)
     {
         if (fetched.Outcome == FetchOutcome.Failed)
@@ -69,7 +79,7 @@ public sealed class CrawlPageProcessor(
             return PageOutcome.WithoutLinks($"Root page could not be fetched: {fetched.FailureReason}");
         }
 
-        if (fetched.Outcome == FetchOutcome.NotHtml || !domain.Contains(fetched.FinalUrl))
+        if (fetched.Outcome is FetchOutcome.NotHtml or FetchOutcome.Disallowed || !domain.Contains(fetched.FinalUrl))
         {
             page.Skip();
             return PageOutcome.WithoutLinks();

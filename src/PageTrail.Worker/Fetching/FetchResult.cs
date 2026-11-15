@@ -4,6 +4,7 @@ public enum FetchOutcome
 {
     Html,
     NotHtml,
+    Disallowed,
     Failed,
 }
 

@@ -7,6 +7,7 @@ namespace PageTrail.IntegrationTests.Crawling;
 public sealed class FixtureSiteHandler : HttpMessageHandler
 {
     private const string LeavesDomainPath = "leaves";
+    private const string RobotsPath = "robots.txt";
     private static readonly Uri OffSiteLanding = new("https://elsewhere.example/landing");
     private static readonly string FixtureRoot = Path.Combine(AppContext.BaseDirectory, "Fixtures", "site");
 
@@ -14,17 +15,24 @@ public sealed class FixtureSiteHandler : HttpMessageHandler
 
     public Func<Uri, Task>? BeforeRespond { get; set; }
 
+    public string? RobotsTxt { get; set; }
+
     public int RequestsFor(string url) => _requests.GetValueOrDefault(url);
 
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
         _requests.AddOrUpdate(request.RequestUri!.AbsoluteUri, 1, (_, count) => count + 1);
+        var path = request.RequestUri.AbsolutePath.Trim('/');
+        if (path == RobotsPath)
+        {
+            return RobotsResponse(request);
+        }
+
         if (BeforeRespond is { } hook)
         {
             await hook(request.RequestUri);
         }
 
-        var path = request.RequestUri.AbsolutePath.Trim('/');
         var file = FindFile(path);
         if (file is null)
         {
@@ -36,6 +44,11 @@ public sealed class FixtureSiteHandler : HttpMessageHandler
         var finalRequest = path == LeavesDomainPath ? new HttpRequestMessage(HttpMethod.Get, OffSiteLanding) : request;
         return new HttpResponseMessage(HttpStatusCode.OK) { Content = content, RequestMessage = finalRequest };
     }
+
+    private HttpResponseMessage RobotsResponse(HttpRequestMessage request) =>
+        RobotsTxt is null
+            ? new HttpResponseMessage(HttpStatusCode.NotFound) { RequestMessage = request }
+            : new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(RobotsTxt), RequestMessage = request };
 
     private static string? FindFile(string path)
     {

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using PageTrail.Domain.Jobs;
@@ -8,11 +9,14 @@ using PageTrail.Infrastructure.Messaging;
 using PageTrail.Infrastructure.Persistence;
 using PageTrail.Worker.Fetching;
 using PageTrail.Worker.Processing;
+using PageTrail.Worker.Robots;
 
 namespace PageTrail.IntegrationTests.Crawling;
 
 public sealed class CrawlHarness(PageTrailApiFactory factory)
 {
+    private static readonly MemoryCache RobotsCache = new(new MemoryCacheOptions());
+
     public FixtureSiteHandler Site { get; } = new();
 
     public static byte[] BodyOf(Guid jobId, long pageId) => JsonSerializer.SerializeToUtf8Bytes(new CrawlPageMessage(jobId, pageId));
@@ -56,8 +60,11 @@ public sealed class CrawlHarness(PageTrailApiFactory factory)
         }
     }
 
-    private static CrawlPageProcessor CreateProcessor(PageTrailDbContext db, HttpClient http) =>
-        new(db, new HtmlPageFetcher(http), TimeProvider.System, NullLogger<CrawlPageProcessor>.Instance);
+    private static CrawlPageProcessor CreateProcessor(PageTrailDbContext db, HttpClient http)
+    {
+        var fetcher = new HtmlPageFetcher(http);
+        return new(db, fetcher, new RobotsPolicy(fetcher, RobotsCache), TimeProvider.System, NullLogger<CrawlPageProcessor>.Instance);
+    }
 
     private async Task<long?> NextQueuedPageAsync(Guid jobId)
     {

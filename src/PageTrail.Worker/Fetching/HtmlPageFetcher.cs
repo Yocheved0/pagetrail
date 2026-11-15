@@ -4,6 +4,25 @@ namespace PageTrail.Worker.Fetching;
 
 public sealed class HtmlPageFetcher(HttpClient http)
 {
+    private const string RobotsPath = "/robots.txt";
+
+    public async Task<string?> FetchRobotsAsync(Uri origin, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var response = await http.GetAsync(new Uri(origin, RobotsPath), cancellationToken);
+            return response.IsSuccessStatusCode ? await response.Content.ReadAsStringAsync(cancellationToken) : null;
+        }
+        catch (HttpRequestException)
+        {
+            return null;
+        }
+        catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            return null;
+        }
+    }
+
     public async Task<FetchResult> FetchAsync(Uri url, CancellationToken cancellationToken)
     {
         try
