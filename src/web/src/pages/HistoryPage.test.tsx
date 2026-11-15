@@ -3,6 +3,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { afterEach, expect, test, vi } from "vitest";
+import { TooltipProvider } from "../components/ui/tooltip";
 import HistoryPage from "./HistoryPage";
 
 afterEach(() => vi.unstubAllGlobals());
@@ -10,12 +11,14 @@ afterEach(() => vi.unstubAllGlobals());
 function renderHistory() {
   render(
     <QueryClientProvider client={new QueryClient()}>
-      <MemoryRouter initialEntries={["/history"]}>
-        <Routes>
-          <Route path="/history" element={<HistoryPage />} />
-          <Route path="/jobs/:jobId" element={<p>details page</p>} />
-        </Routes>
-      </MemoryRouter>
+      <TooltipProvider>
+        <MemoryRouter initialEntries={["/history"]}>
+          <Routes>
+            <Route path="/history" element={<HistoryPage />} />
+            <Route path="/jobs/:jobId" element={<p>details page</p>} />
+          </Routes>
+        </MemoryRouter>
+      </TooltipProvider>
     </QueryClientProvider>,
   );
 }

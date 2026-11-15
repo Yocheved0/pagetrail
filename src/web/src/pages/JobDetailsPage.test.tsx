@@ -3,9 +3,26 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { afterEach, expect, test, vi } from "vitest";
+import { Toaster } from "../components/ui/sonner";
+import { TooltipProvider } from "../components/ui/tooltip";
 import JobDetailsPage from "./JobDetailsPage";
 
 afterEach(() => vi.unstubAllGlobals());
+
+function renderJobDetails() {
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <TooltipProvider>
+        <MemoryRouter initialEntries={["/jobs/job-1"]}>
+          <Routes>
+            <Route path="/jobs/:jobId" element={<JobDetailsPage />} />
+          </Routes>
+        </MemoryRouter>
+      </TooltipProvider>
+      <Toaster />
+    </QueryClientProvider>,
+  );
+}
 
 const completedJob = {
   id: "job-1",
@@ -58,15 +75,7 @@ test("a completed job shows its page tree with each page's Domain Link Ratio", a
     ),
   );
 
-  render(
-    <QueryClientProvider client={new QueryClient()}>
-      <MemoryRouter initialEntries={["/jobs/job-1"]}>
-        <Routes>
-          <Route path="/jobs/:jobId" element={<JobDetailsPage />} />
-        </Routes>
-      </MemoryRouter>
-    </QueryClientProvider>,
-  );
+  renderJobDetails();
 
   const treeView = await screen.findByRole("tree");
   const root = within(treeView).getAllByRole("treeitem")[0];
@@ -85,7 +94,7 @@ test("a completed job shows its page tree with each page's Domain Link Ratio", a
   ).toHaveTextContent("Skipped");
 });
 
-test("an active job can be canceled", async () => {
+test("an active job can be canceled and a toast says it finished", async () => {
   const runningJob = {
     ...completedJob,
     status: "Running",
@@ -104,21 +113,14 @@ test("an active job can be canceled", async () => {
   );
   vi.stubGlobal("fetch", fetchMock);
 
-  render(
-    <QueryClientProvider client={new QueryClient()}>
-      <MemoryRouter initialEntries={["/jobs/job-1"]}>
-        <Routes>
-          <Route path="/jobs/:jobId" element={<JobDetailsPage />} />
-        </Routes>
-      </MemoryRouter>
-    </QueryClientProvider>,
-  );
+  renderJobDetails();
 
   await userEvent.click(
     await screen.findByRole("button", { name: "Cancel crawl" }),
   );
 
   expect(await screen.findByText("Canceled")).toBeInTheDocument();
+  expect(await screen.findByText("Crawl canceled")).toBeInTheDocument();
   expect(
     screen.queryByRole("button", { name: "Cancel crawl" }),
   ).not.toBeInTheDocument();
