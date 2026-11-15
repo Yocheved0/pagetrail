@@ -7,6 +7,7 @@ public sealed record PageLinks(IReadOnlyList<Uri> Outgoing, double DomainLinkRat
         var outgoing = hrefs
             .Select(href => UrlNormalizer.Normalize(pageUrl, href))
             .OfType<Uri>()
+            .Where(UrlNormalizer.FitsMaxLength)
             .Where(url => url != pageUrl)
             .Distinct()
             .ToList();

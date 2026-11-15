@@ -17,6 +17,7 @@ builder.Services.AddOptions<CrawlLimitsOptions>()
     .Bind(builder.Configuration.GetSection(CrawlLimitsOptions.SectionName))
     .ValidateDataAnnotations()
     .ValidateOnStart();
+builder.Services.AddSingleton<IPagePublisher, RabbitMqPagePublisher>();
 builder.Services.AddHostedService<PageDispatcher>();
 
 var app = builder.Build();

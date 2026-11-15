@@ -2,6 +2,8 @@ namespace PageTrail.Domain.Links;
 
 public static class UrlNormalizer
 {
+    public const int MaxUrlLength = 2048;
+
     public static Uri? Normalize(Uri pageUrl, string href)
     {
         var trimmed = href.Trim();
@@ -19,4 +21,6 @@ public static class UrlNormalizer
         url.IsAbsoluteUri
         && (url.Scheme == Uri.UriSchemeHttp || url.Scheme == Uri.UriSchemeHttps)
         && url.Host.Length > 0;
+
+    public static bool FitsMaxLength(Uri url) => url.AbsoluteUri.Length <= MaxUrlLength;
 }

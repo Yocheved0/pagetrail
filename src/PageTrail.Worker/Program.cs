@@ -13,9 +13,7 @@ builder.Services.AddRabbitMq(builder.Configuration);
 builder.Services.AddSingleton<BrokerConnectionState>();
 builder.Services.AddHealthChecks().AddCheck<BrokerConnectionHealthCheck>("rabbitmq");
 builder.Services.AddMemoryCache();
-builder.Services.AddHttpClient<HtmlPageFetcher>(http => http.DefaultRequestHeaders.UserAgent.ParseAdd($"{RobotsRules.UserAgentToken}/1.0"))
-    .ConfigurePrimaryHttpMessageHandler(PrivateAddressGuard.CreateHandler)
-    .AddStandardResilienceHandler();
+builder.Services.AddPageFetcher();
 builder.Services.AddScoped<RobotsPolicy>();
 builder.Services.AddScoped<CrawlPageProcessor>();
 builder.Services.AddScoped<CrawlDeliveryHandler>();

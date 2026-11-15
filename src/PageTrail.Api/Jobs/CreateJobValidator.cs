@@ -12,6 +12,10 @@ public static class CreateJobValidator
         {
             errors[nameof(request.Url)] = ["Url must be an absolute http or https URL."];
         }
+        else if (!UrlNormalizer.FitsMaxLength(normalizedUrl))
+        {
+            errors[nameof(request.Url)] = [$"Url must be at most {UrlNormalizer.MaxUrlLength} characters."];
+        }
 
         if (request.MaxDepth is < CrawlLimitsOptions.MinDepth or > CrawlLimitsOptions.MaxDepth)
         {

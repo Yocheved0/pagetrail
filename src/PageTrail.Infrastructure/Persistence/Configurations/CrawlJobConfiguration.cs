@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using PageTrail.Domain.Jobs;
+using PageTrail.Domain.Links;
 
 namespace PageTrail.Infrastructure.Persistence.Configurations;
 
@@ -11,7 +12,7 @@ internal sealed class CrawlJobConfiguration : IEntityTypeConfiguration<CrawlJob>
         builder.ToTable("Jobs");
         builder.HasKey(j => j.Id);
         builder.Property(j => j.Id).ValueGeneratedNever();
-        builder.Property(j => j.Url).HasMaxLength(UrlColumns.MaxUrlLength).IsRequired();
+        builder.Property(j => j.Url).HasMaxLength(UrlNormalizer.MaxUrlLength).IsRequired();
         builder.Property(j => j.Status).HasConversion<string>().HasMaxLength(16);
         builder.Property(j => j.FailureReason).HasMaxLength(1024);
         builder.Ignore(j => j.IsFinished);

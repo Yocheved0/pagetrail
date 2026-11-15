@@ -1,4 +1,3 @@
-using System.Text.Json;
 using PageTrail.Infrastructure.Messaging;
 
 namespace PageTrail.Worker.Processing;
@@ -9,14 +8,13 @@ public sealed class CrawlDeliveryHandler(CrawlPageProcessor processor, ILogger<C
 
     public async Task<DeliveryDecision> HandleAsync(ReadOnlyMemory<byte> body, int attempt, CancellationToken cancellationToken)
     {
-        var message = Parse(body);
+        var message = CrawlPageMessage.Parse(body);
         if (message is null)
         {
             logger.LogWarning("Unparseable crawl message dead-lettered");
             return DeliveryDecision.DeadLetter;
         }
 
-        using var logScope = logger.BeginScope(new Dictionary<string, object> { ["JobId"] = message.JobId, ["PageId"] = message.PageId });
         try
         {
             return await ProcessAsync(message, cancellationToken);
@@ -25,18 +23,6 @@ public sealed class CrawlDeliveryHandler(CrawlPageProcessor processor, ILogger<C
         {
             // WHY: any handler failure, transient or not, must go through the retry queue rather than be lost
             return await FailAttemptAsync(message, attempt, ex, cancellationToken);
-        }
-    }
-
-    private static CrawlPageMessage? Parse(ReadOnlyMemory<byte> body)
-    {
-        try
-        {
-            return JsonSerializer.Deserialize<CrawlPageMessage>(body.Span);
-        }
-        catch (JsonException)
-        {
-            return null;
         }
     }
 

@@ -58,4 +58,17 @@ public sealed class PageLinksTests
 
         Assert.Equal(1, links.DomainLinkRatio);
     }
+
+    [Fact]
+    public void LinksLongerThan2048CharactersAreIgnored()
+    {
+        const string Prefix = "https://example.com/";
+        var atLimit = Prefix + new string('a', 2048 - Prefix.Length);
+        var overLimit = atLimit + "b";
+
+        var links = PageLinks.From(PageUrl, [atLimit, overLimit, "https://other.org/"], Domain);
+
+        Assert.Equal([new Uri(atLimit), new Uri("https://other.org/")], links.Outgoing);
+        Assert.Equal(0.5, links.DomainLinkRatio);
+    }
 }

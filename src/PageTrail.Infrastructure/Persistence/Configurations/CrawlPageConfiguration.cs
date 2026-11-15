@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using PageTrail.Domain.Jobs;
+using PageTrail.Domain.Links;
 using PageTrail.Domain.Pages;
 
 namespace PageTrail.Infrastructure.Persistence.Configurations;
@@ -13,7 +14,7 @@ internal sealed class CrawlPageConfiguration : IEntityTypeConfiguration<CrawlPag
     {
         builder.ToTable("Pages");
         builder.HasKey(p => p.Id);
-        builder.Property(p => p.Url).HasMaxLength(UrlColumns.MaxUrlLength).IsRequired();
+        builder.Property(p => p.Url).HasMaxLength(UrlNormalizer.MaxUrlLength).IsRequired();
         builder.ConfigureUrlWithHash(nameof(CrawlPage.UrlKey), UrlKeyHash);
         builder.Property(p => p.Status).HasConversion<string>().HasMaxLength(16);
         builder.Ignore(p => p.IsRoot);

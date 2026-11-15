@@ -33,7 +33,7 @@ public sealed class CrawlPageConsumer(
         await Task.Delay(Timeout.Infinite, stoppingToken);
     }
 
-    private static int AttemptOf(IReadOnlyBasicProperties properties)
+    public static int AttemptOf(IReadOnlyBasicProperties properties)
     {
         object? header = null;
         properties.Headers?.TryGetValue(CrawlQueues.AttemptHeader, out header);
@@ -63,13 +63,16 @@ public sealed class CrawlPageConsumer(
         await channel.BasicPublishAsync(exchange: "", routingKey: queue, mandatory: true, properties, body, cancellationToken);
     }
 
-    private Task HandleAsync(IChannel channel, BasicDeliverEventArgs delivery, CancellationToken cancellationToken) =>
-        DeliverySafetyNet.RunAsync(
+    private async Task HandleAsync(IChannel channel, BasicDeliverEventArgs delivery, CancellationToken cancellationToken)
+    {
+        using var logScope = logger.BeginScope(DeliveryLogScope.For(delivery.DeliveryTag, delivery.Body));
+        await DeliverySafetyNet.RunAsync(
             () => DeliverAsync(channel, delivery, cancellationToken),
             () => channel.BasicNackAsync(delivery.DeliveryTag, multiple: false, requeue: true, cancellationToken).AsTask(),
             RequeueDelay,
             logger,
             cancellationToken);
+    }
 
     private async Task DeliverAsync(IChannel channel, BasicDeliverEventArgs delivery, CancellationToken cancellationToken)
     {

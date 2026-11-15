@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Microsoft.AspNetCore.Http;
 using PageTrail.Api.Jobs;
 using PageTrail.Domain.Jobs;
 
@@ -63,6 +64,18 @@ public sealed class JobEndpointsTests(PageTrailApiFactory factory)
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.Equal("application/problem+json", response.Content.Headers.ContentType!.MediaType);
+    }
+
+    [Fact]
+    public async Task JobUrlLongerThan2048CharactersReturns400ProblemDetails()
+    {
+        var url = "https://example.com/" + new string('a', 2048);
+
+        var response = await _client.PostAsJsonAsync("/api/jobs", new { url });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var problem = await response.Content.ReadFromJsonAsync<HttpValidationProblemDetails>(Json);
+        Assert.Contains(nameof(CreateJobRequest.Url), problem!.Errors.Keys);
     }
 
     [Fact]

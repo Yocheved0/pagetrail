@@ -62,7 +62,7 @@ public sealed class CrawlHarness(PageTrailApiFactory factory)
 
     private static CrawlPageProcessor CreateProcessor(PageTrailDbContext db, HttpClient http)
     {
-        var fetcher = new HtmlPageFetcher(http);
+        var fetcher = new HtmlPageFetcher(http, TimeProvider.System);
         return new(db, fetcher, new RobotsPolicy(fetcher, RobotsCache), TimeProvider.System, NullLogger<CrawlPageProcessor>.Instance);
     }
 

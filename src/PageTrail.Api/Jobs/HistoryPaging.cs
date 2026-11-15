@@ -8,12 +8,14 @@ public static class HistoryPaging
 
     public const int MaxPageSize = 100;
 
+    public const int MaxPage = int.MaxValue / MaxPageSize;
+
     public static Dictionary<string, string[]> Validate(int page, int pageSize)
     {
         var errors = new Dictionary<string, string[]>();
-        if (page < 1)
+        if (page is < 1 or > MaxPage)
         {
-            errors["page"] = ["page must be 1 or greater."];
+            errors["page"] = [$"page must be between 1 and {MaxPage}."];
         }
 
         if (pageSize is < 1 or > MaxPageSize)

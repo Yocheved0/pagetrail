@@ -106,6 +106,31 @@ public sealed class ReliableDeliveryTests(PageTrailApiFactory factory)
         Assert.Equal(CrawlJobStatus.Running, (await db.Jobs.SingleAsync(j => j.Id == jobId)).Status);
     }
 
+    [Fact]
+    public async Task ConcurrentCommitsOfTheLastQueuedPagesCompleteTheJob()
+    {
+        var (jobId, rootId) = await _harness.SeedJobAsync(Root, maxDepth: 1);
+        await _harness.ProcessAsync(jobId, rootId);
+        long[] lastPages = [await ChildIdAsync(jobId, "https://fixture.test/about"), await ChildIdAsync(jobId, "https://www.fixture.test/contact")];
+        var fetching = 0;
+        var allFetching = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        _harness.Site.BeforeRespond = async _ =>
+        {
+            if (Interlocked.Increment(ref fetching) == lastPages.Length)
+            {
+                allFetching.SetResult();
+            }
+
+            await allFetching.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        };
+
+        await Task.WhenAll(lastPages.Select(pageId => _harness.ProcessAsync(jobId, pageId)));
+
+        await using var db = _harness.CreateDb();
+        Assert.False(await db.Pages.AnyAsync(p => p.JobId == jobId && p.Status == CrawlPageStatus.Queued));
+        Assert.Equal(CrawlJobStatus.Completed, (await db.Jobs.SingleAsync(j => j.Id == jobId)).Status);
+    }
+
     private async Task<long> ChildIdAsync(Guid jobId, string url)
     {
         await using var db = _harness.CreateDb();

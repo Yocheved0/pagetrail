@@ -64,6 +64,7 @@ public sealed class JobHistoryTests(PageTrailApiFactory factory)
     [InlineData("page=0")]
     [InlineData("pageSize=0")]
     [InlineData("pageSize=101")]
+    [InlineData("page=2147483647")]
     public async Task OutOfRangePagingReturns400ProblemDetails(string query)
     {
         var response = await _client.GetAsync(new Uri($"/api/jobs?{query}", UriKind.Relative));
