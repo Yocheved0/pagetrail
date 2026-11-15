@@ -178,7 +178,9 @@ jobs:
         run: if [ -f .env.example ] && [ ! -f .env ]; then cp .env.example .env; fi
       - name: Build images
         run: |
-          if ls docker-compose.y*ml compose.y*ml >/dev/null 2>&1; then docker compose build; else docker build .; fi
+          if [ -f docker-compose.yml ] || [ -f docker-compose.yaml ] || [ -f compose.yml ] || [ -f compose.yaml ]; then
+            SA_PASSWORD="Ci$(openssl rand -hex 16)!A" RABBITMQ_USER=ci RABBITMQ_PASSWORD="$(openssl rand -hex 16)" docker compose build
+          else docker build .; fi
 
   codeql:
     needs: detect
