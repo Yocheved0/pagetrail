@@ -56,6 +56,7 @@ Each page waiting to be crawled is one message on a RabbitMQ queue. The message 
 - `www.example.com` and `example.com` are the same site; other subdomains are external.
 - Only same-site links are crawled; external links are counted but not fetched.
 - Defaults: depth 2 (max 5), 200 pages per job.
+- A page larger than 5 MB, or that takes longer than 30 seconds to download, is marked as failed. Links longer than 2048 characters are ignored, and a crawl can't be started with a URL that long.
 
 ## What I built first, what I cut, and what I'd do next
 
