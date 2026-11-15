@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useParams } from "react-router";
-import { finishedStatuses, getJob, type Job } from "../api";
+import { finishedStatuses, getJob, getTree, type Job } from "../api";
+import PageTree from "../components/PageTree";
 
 const pollIntervalMs = 1500;
 
@@ -21,6 +22,20 @@ function Progress({ job }: { job: Job }) {
       </p>
     </div>
   );
+}
+
+function CompletedTree({ jobId }: { jobId: string }) {
+  const tree = useQuery({
+    queryKey: ["tree", jobId],
+    queryFn: () => getTree(jobId),
+  });
+  if (tree.isPending) {
+    return <p>Loading pages…</p>;
+  }
+  if (tree.isError) {
+    return <p role="alert">Could not load pages: {tree.error.message}</p>;
+  }
+  return <PageTree root={tree.data} />;
 }
 
 export default function JobDetailsPage() {
@@ -66,6 +81,7 @@ export default function JobDetailsPage() {
         )}
       </dl>
       <Progress job={data} />
+      {data.status === "Completed" && <CompletedTree jobId={data.id} />}
     </section>
   );
 }

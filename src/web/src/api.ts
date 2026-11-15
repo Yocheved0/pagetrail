@@ -66,3 +66,19 @@ export function createJob(url: string, maxDepth: number) {
 export function getJob(jobId: string) {
   return request<Job>(`/api/jobs/${encodeURIComponent(jobId)}`);
 }
+
+export type PageStatus = "Queued" | "Done" | "Skipped" | "Failed";
+
+export interface PageNode {
+  id: number;
+  url: string;
+  depth: number;
+  status: PageStatus;
+  domainLinkRatio: number | null;
+  links: string[];
+  children: PageNode[];
+}
+
+export function getTree(jobId: string) {
+  return request<PageNode>(`/api/jobs/${encodeURIComponent(jobId)}/tree`);
+}

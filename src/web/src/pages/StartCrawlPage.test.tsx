@@ -45,17 +45,15 @@ test("submitting a URL creates a job and opens its details", async () => {
 test("shows the API's validation error when the job is rejected", async () => {
   vi.stubGlobal(
     "fetch",
-    vi
-      .fn()
-      .mockResolvedValue(
-        Response.json(
-          {
-            title: "One or more validation errors occurred.",
-            errors: { Url: ["Url must be an absolute http or https URL."] },
-          },
-          { status: 400 },
-        ),
+    vi.fn().mockResolvedValue(
+      Response.json(
+        {
+          title: "One or more validation errors occurred.",
+          errors: { Url: ["Url must be an absolute http or https URL."] },
+        },
+        { status: 400 },
       ),
+    ),
   );
   renderStartCrawl();
 

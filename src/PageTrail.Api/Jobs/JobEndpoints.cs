@@ -14,7 +14,17 @@ public static class JobEndpoints
         var jobs = app.MapGroup("/api/jobs");
         jobs.MapPost("/", CreateJobAsync);
         jobs.MapGet("/{jobId:guid}", GetJobAsync);
+        jobs.MapGet("/{jobId:guid}/tree", GetTreeAsync);
         return app;
+    }
+
+    private static async Task<Results<Ok<PageNode>, NotFound>> GetTreeAsync(
+        Guid jobId,
+        PageTrailDbContext db,
+        CancellationToken cancellationToken)
+    {
+        var tree = await PageTree.LoadAsync(db, jobId, cancellationToken);
+        return tree is null ? TypedResults.NotFound() : TypedResults.Ok(tree);
     }
 
     private static async Task<Results<Accepted<CreateJobResponse>, ValidationProblem>> CreateJobAsync(

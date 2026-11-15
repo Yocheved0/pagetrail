@@ -51,6 +51,17 @@ public sealed class UrlNormalizerTests
         Assert.Null(UrlNormalizer.Normalize(PageUrl, href));
     }
 
+    [Theory]
+    [InlineData("https://www.example.com/a?x=1", "https://example.com/a?x=1")]
+    [InlineData("https://WWW.example.com/", "https://example.com/")]
+    [InlineData("http://example.com:8080/a", "http://example.com:8080/a")]
+    [InlineData("https://www.www.example.com/", "https://www.example.com/")]
+    [InlineData("https://blog.example.com/", "https://blog.example.com/")]
+    public void DedupKeyDropsOneLeadingWwwFromTheHost(string url, string expected)
+    {
+        Assert.Equal(expected, UrlNormalizer.DedupKey(new Uri(url)));
+    }
+
     [Fact]
     public void SurroundingWhitespaceIsTrimmed()
     {

@@ -9,6 +9,7 @@ public sealed class CrawlPage
     {
         JobId = jobId;
         Url = url;
+        UrlKey = UrlNormalizer.DedupKey(new Uri(url));
         Depth = depth;
         ParentPageId = parentPageId;
     }
@@ -18,6 +19,8 @@ public sealed class CrawlPage
     public Guid JobId { get; private set; }
 
     public string Url { get; private set; }
+
+    public string UrlKey { get; private set; }
 
     public int Depth { get; private set; }
 
@@ -32,6 +35,8 @@ public sealed class CrawlPage
     public bool IsRoot => ParentPageId is null;
 
     public static CrawlPage Root(CrawlJob job) => new(job.Id, job.Url, depth: 0, parentPageId: null);
+
+    public CrawlPage Child(Uri url) => new(JobId, url.AbsoluteUri, Depth + 1, Id);
 
     public void MarkPublished() => IsPublished = true;
 

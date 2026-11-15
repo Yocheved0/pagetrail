@@ -97,12 +97,17 @@ namespace PageTrail.Infrastructure.Persistence.Migrations
                         .HasMaxLength(2048)
                         .HasColumnType("nvarchar(2048)");
 
-                    b.Property<byte[]>("UrlHash")
+                    b.Property<string>("UrlKey")
+                        .IsRequired()
+                        .HasMaxLength(2048)
+                        .HasColumnType("nvarchar(2048)");
+
+                    b.Property<byte[]>("UrlKeyHash")
                         .IsRequired()
                         .ValueGeneratedOnAddOrUpdate()
                         .HasMaxLength(32)
                         .HasColumnType("binary(32)")
-                        .HasComputedColumnSql("CAST(HASHBYTES('SHA2_256', [Url]) AS binary(32))", true)
+                        .HasComputedColumnSql("CAST(HASHBYTES('SHA2_256', [UrlKey]) AS binary(32))", true)
                         .IsFixedLength();
 
                     b.HasKey("Id");
@@ -115,7 +120,7 @@ namespace PageTrail.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("JobId", "Status");
 
-                    b.HasIndex("JobId", "UrlHash")
+                    b.HasIndex("JobId", "UrlKeyHash")
                         .IsUnique();
 
                     b.ToTable("Pages", (string)null);
